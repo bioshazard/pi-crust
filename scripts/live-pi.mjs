@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 const pi = resolve("node_modules/.bin/pi");
 process.stderr.write(`Live Pi exercise (uses existing OAuth):
 1. /crust start <small multi-ticket idea>
-2. Complete and accept shared-understanding, test-seams, spec, tickets gates
+2. Use each proposal popup to accept/reject shared-understanding, test-seams, spec, and tickets
 3. Verify Pi replaces the shaping session after ticket selection
 4. Drive review findings through FIXING, clean review, commit, acceptance
 5. /crust next until /crust status reports DONE

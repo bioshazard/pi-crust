@@ -19,3 +19,17 @@ the active state's proposal tool is exposed to the model.
 Crust also activates a locked builtin-tool allowlist and bounded `stage_artifact` tool.
 
 Run `npm run test:live` for the opt-in stock-Pi/OAuth exercise; default tests remain model-free.
+
+Link the development CLI once, then launch Crust from any target folder:
+
+```sh
+npm link
+cd /path/to/target
+crust .
+```
+
+The launcher installs the pinned project-local skills when needed, then runs isolated
+Pi with workflow state stored under the target's `.crust/` directory. Its private lock
+does not replace the target's existing skills setup.
+
+Without linking, use `npm run crust -- /path/to/target` from this checkout.

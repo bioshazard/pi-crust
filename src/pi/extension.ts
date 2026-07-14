@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Static, TSchema } from "typebox";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createCrustKernel, type CrustKernel } from "../kernel/kernel.js";
 import { CrustError, type Run } from "../kernel/types.js";
@@ -200,7 +200,8 @@ function skillDirectory(cwd: string): string {
   return join(cwd, ".pi", "skills");
 }
 function skillLock(cwd: string): Record<string, string> {
-  const lock = JSON.parse(readFileSync(join(cwd, "skills-lock.json"), "utf8")) as { skills: Record<string, { computedHash: string }> };
+  const privateLock = join(cwd, ".crust", "skills-lock.json");
+  const lock = JSON.parse(readFileSync(existsSync(privateLock) ? privateLock : join(cwd, "skills-lock.json"), "utf8")) as { skills: Record<string, { computedHash: string }> };
   return Object.fromEntries(Object.entries(lock.skills).map(([name, value]) => [name, value.computedHash]));
 }
 function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
