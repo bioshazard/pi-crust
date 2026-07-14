@@ -43,10 +43,13 @@ export default function crustExtension(pi: ExtensionAPI): void {
       let run = activeKernel.verifyResume(runId);
       await activeKernel.verifyStoredComposition(runId);
       const sessionId = ctx.sessionManager.getSessionId();
+      let crossedBoundary = false;
       if (!run.sessions.some((session) => session.active && session.sessionId === sessionId)) {
         run = activeKernel.operator(runId).restoreSession(run.revision, sessionId);
+        crossedBoundary = true;
       }
       activate(run); enabled = true;
+      if (crossedBoundary) drive(run);
     } catch (error) {
       pi.setActiveTools([]);
       ctx.ui.notify(`Crust restore blocked: ${message(error)}`, "error");
@@ -97,17 +100,21 @@ export default function crustExtension(pi: ExtensionAPI): void {
     const [verb = "status", ...rest] = input.split(/\s+/);
     const activeKernel = getKernel(ctx);
     if (verb === "start") {
-      const idea = rest.join(" ").trim(); if (!idea) throw new CrustError("IDEA_REQUIRED", "Usage: /crust start <idea>");
+      const idea = parseIdea(rest.join(" ")); if (!idea) throw new CrustError("IDEA_REQUIRED", "Usage: /crust start <idea>");
       const run = await activeKernel.createRun({ idea, sessionId: ctx.sessionManager.getSessionId() });
       runId = run.id; pi.appendEntry(BINDING, { runId }); enabled = true; activate(run);
-      ctx.ui.notify(`Crust run ${run.id} started.`, "info"); return;
+      ctx.ui.notify(`Crust run ${run.id} started.`, "info");
+      drive(run);
+      return;
     }
     if (verb === "resume") {
       runId = rest[0] ?? bindingFrom(ctx); if (!runId) throw new CrustError("RUN_ID_REQUIRED", "Usage: /crust resume <run-id>");
       let run = activeKernel.verifyResume(runId); await activeKernel.verifyStoredComposition(runId);
       const sessionId = ctx.sessionManager.getSessionId();
       if (!run.sessions.some((session) => session.active && session.sessionId === sessionId)) run = activeKernel.operator(runId).resumeSession(run.revision, sessionId);
-      enabled = true; pi.appendEntry(BINDING, { runId }); activate(run); ctx.ui.notify(`Resumed ${run.id}.`, "info"); return;
+      enabled = true; pi.appendEntry(BINDING, { runId }); activate(run); ctx.ui.notify(`Resumed ${run.id}.`, "info");
+      drive(run);
+      return;
     }
     if (!runId) throw new CrustError("RUN_NOT_BOUND", "No Crust run; use /crust start or /crust resume");
     let run = activeKernel.run(runId);
@@ -125,12 +132,17 @@ export default function crustExtension(pi: ExtensionAPI): void {
         await replaceSession(ctx, run.id);
         return;
       }
-      activate(run); ctx.ui.notify(`Accepted; state ${run.state}.`, "info"); return;
+      activate(run); ctx.ui.notify(`Accepted; state ${run.state}.`, "info");
+      drive(run);
+      return;
     }
     if (verb === "reject") {
       const proposalId = rest.shift(); if (!proposalId) throw new CrustError("PROPOSAL_REQUIRED", "Usage: /crust reject <proposal-id> [reason]");
       if (!await ctx.ui.confirm("Reject proposal", proposalId)) return;
-      run = activeKernel.operator(runId).reject(run.revision, proposalId, rest.join(" ") || "operator rejected"); activate(run); return;
+      const reason = rest.join(" ") || "operator rejected";
+      run = activeKernel.operator(runId).reject(run.revision, proposalId, reason); activate(run);
+      drive(run, `The previous proposal was rejected: ${reason}`);
+      return;
     }
     if (verb === "next") {
       if (run.tickets.every((ticket) => ticket.status === "accepted")) { run = activeKernel.operator(runId).finish(run.revision); activate(run); ctx.ui.notify("Crust run DONE.", "info"); return; }
@@ -144,6 +156,11 @@ export default function crustExtension(pi: ExtensionAPI): void {
     const result = await ctx.newSession({ setup: async (manager) => { manager.appendCustomEntry(BINDING, { runId: id }); } });
     if (result.cancelled) throw new CrustError("SESSION_REPLACEMENT_CANCELLED", "Fresh ticket session was cancelled");
   }
+  function drive(run: Run, suffix?: string): void {
+    activate(run);
+    const next = kernel?.nextAgentTurn(run.id);
+    if (next) pi.sendUserMessage(suffix ? `${next}\n${suffix}` : next);
+  }
 }
 
 function skillDirectory(cwd: string): string {
@@ -154,3 +171,8 @@ function skillLock(cwd: string): Record<string, string> {
   return Object.fromEntries(Object.entries(lock.skills).map(([name, value]) => [name, value.computedHash]));
 }
 function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
+function parseIdea(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length >= 2 && ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'")))) return trimmed.slice(1, -1).trim();
+  return trimmed;
+}

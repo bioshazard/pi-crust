@@ -192,8 +192,14 @@ export function createCrustKernel(options: KernelOptions) {
     activeTool(runId: string): string { return client.toolName(store.get(runId)); },
     activeTools(runId: string): string[] {
       const run = store.get(runId);
+      if (run.proposals.some((proposal) => proposal.status === "pending")) return [];
       try { return [...client.builtinTools(run.state), "stage_artifact", client.toolName(run)]; }
-      catch { return client.builtinTools(run.state); }
+      catch { return []; }
+    },
+    nextAgentTurn(runId: string): string | null {
+      const run = store.get(runId);
+      if (run.proposals.some((proposal) => proposal.status === "pending")) return null;
+      try { client.proposalKind(run); return client.nextAgentTurn(run); } catch { return null; }
     },
     readyTickets(runId: string) { return client.readyTickets(store.get(runId)).map(({ id, title }) => ({ id, title })); },
     close(): void { store.close(); },

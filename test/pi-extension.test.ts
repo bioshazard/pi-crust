@@ -20,6 +20,7 @@ it("Pi commands and child tools cross the kernel authority seam", async () => {
   const commands = new Map<string, Record<string, unknown>>();
   const entries: Array<Record<string, unknown>> = [];
   const replacementEntries: Array<Record<string, unknown>> = [];
+  const sentUserMessages: string[] = [];
   let active: string[] = [];
   const api = {
     on: (name: string, handler: Function) => events.set(name, handler),
@@ -28,6 +29,7 @@ it("Pi commands and child tools cross the kernel authority seam", async () => {
     setActiveTools: (names: string[]) => { active = names; },
     getThinkingLevel: () => "high",
     appendEntry: (customType: string, data: unknown) => entries.push({ type: "custom", customType, data }),
+    sendUserMessage: (content: string) => sentUserMessages.push(content),
   };
   crustExtension(api as never);
 
@@ -46,10 +48,14 @@ it("Pi commands and child tools cross the kernel authority seam", async () => {
     },
   };
 
-  await (commands.get("crust")!.handler as Function)("start prove adapter", context);
+  await (commands.get("crust")!.handler as Function)('start "todo html test"', context);
+  expect(sentUserMessages).toHaveLength(1);
+  expect(sentUserMessages[0]).toContain("Crust now owns workflow orchestration");
+  expect(sentUserMessages[0]).toContain("Intent: todo html test");
+  expect(sentUserMessages[0]).toContain("Repository inspection capabilities remain unavailable until this gate is accepted");
   expect(active).toContain("propose_shared_understanding");
   expect(active).toContain("stage_artifact");
-  expect(active).toContain("write");
+  expect(active).not.toContain("write");
   const prompt = await events.get("before_agent_start")!({ systemPromptOptions: { cwd } }, context);
   expect(prompt.systemPrompt).toContain("## Locked file: grilling/SKILL.md");
 
@@ -57,8 +63,12 @@ it("Pi commands and child tools cross the kernel authority seam", async () => {
     revision: 0, decisions: ["public seam"], glossary: [], adrs: [],
   }, undefined, undefined, context);
   const proposalId = result.content[0].text.match(/[0-9a-f-]{36}/)![0];
+  expect(active).toEqual([]);
   await (commands.get("crust")!.handler as Function)(`accept ${proposalId}`, context);
+  expect(sentUserMessages.at(-1)).toContain("Active state: SPECIFYING");
+  expect(sentUserMessages.at(-1)).toContain("do not reopen prior gates");
   expect(active).toContain("propose_test_seams");
+  expect(active).toContain("write");
   expect(notices.at(-1)).toContain("SPECIFYING");
 
   const propose = async (name: string, params: Record<string, unknown>): Promise<string> => {
@@ -90,6 +100,7 @@ it("Pi commands and child tools cross the kernel authority seam", async () => {
     sessionManager: { getSessionId: () => "ticket-a", getEntries: () => replacementEntries },
   };
   await replacementEvents.get("session_start")!({ reason: "new" }, replacementContext);
+  expect(sentUserMessages.at(-1)).toContain("Active state: IMPLEMENTING");
   expect(replacementActive).toContain("propose_ticket_ready_for_review");
   const replacementPrompt = await replacementEvents.get("before_agent_start")!({ systemPromptOptions: { cwd } }, replacementContext);
   expect(replacementPrompt.systemPrompt).toContain('"activeTicket"');

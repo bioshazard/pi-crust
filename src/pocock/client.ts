@@ -55,7 +55,13 @@ export class PocockClient {
 
   skillClosure(): string[] { return [...new Set(Object.values(SKILLS).flat())].sort(); }
   capabilityIdentity() { return { ambient: false, builtinTools: WORKING_TOOLS, proposalSchemas: PROPOSAL_SCHEMAS, stageArtifactSchema: STAGE_ARTIFACT_SCHEMA }; }
-  builtinTools(state: State): string[] { return state === "ACCEPTED" || state === "DONE" ? [] : [...WORKING_TOOLS]; }
+  builtinTools(state: State): string[] { return state === "GRILLING" || state === "ACCEPTED" || state === "DONE" ? [] : [...WORKING_TOOLS]; }
+  nextAgentTurn(run: Run): string {
+    const direction = run.state === "GRILLING"
+      ? "Establish and record whether the current repository is the intended target, merely the orchestration host, or unrelated. Repository inspection capabilities remain unavailable until this gate is accepted."
+      : "Continue from durable accepted state; do not reopen prior gates or infer context from ambient repository contents.";
+    return `Crust now owns workflow orchestration for this run.\nIntent: ${run.idea}\nActive state: ${run.state}.\nBegin now; do not wait for another invocation. ${direction} Follow the locked composition and use only its terminal proposal when ready.`;
+  }
   skillsFor(state: State): string[] { return SKILLS[state]; }
   terminalContract(state: State): string { return TERMINALS[state]; }
 
