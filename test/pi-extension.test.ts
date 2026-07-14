@@ -21,6 +21,10 @@ it("Pi commands and child tools cross the kernel authority seam", async () => {
   const entries: Array<Record<string, unknown>> = [];
   const replacementEntries: Array<Record<string, unknown>> = [];
   const sentUserMessages: string[] = [];
+  const deliveries: Array<string | undefined> = [];
+  let aborted = 0;
+  let proposalDecision = "Accept";
+  let reloads = 0;
   let active: string[] = [];
   const api = {
     on: (name: string, handler: Function) => events.set(name, handler),
@@ -29,7 +33,7 @@ it("Pi commands and child tools cross the kernel authority seam", async () => {
     setActiveTools: (names: string[]) => { active = names; },
     getThinkingLevel: () => "high",
     appendEntry: (customType: string, data: unknown) => entries.push({ type: "custom", customType, data }),
-    sendUserMessage: (content: string) => sentUserMessages.push(content),
+    sendUserMessage: (content: string, options?: { deliverAs?: string }) => { sentUserMessages.push(content); deliveries.push(options?.deliverAs); },
   };
   crustExtension(api as never);
 
@@ -40,10 +44,16 @@ it("Pi commands and child tools cross the kernel authority seam", async () => {
     ui: {
       notify: (text: string) => notices.push(text),
       confirm: async () => true,
-      select: async (_title: string, choices: string[]) => choices[0],
+      select: async (title: string, choices: string[]) => title === "Decide proposal" ? proposalDecision : choices[0],
+      input: async () => "needs revision",
     },
-    newSession: async ({ setup }: { setup: (manager: { appendCustomEntry: (type: string, data: unknown) => void }) => Promise<void> }) => {
+    abort: () => { aborted += 1; },
+    newSession: async ({ setup, withSession }: {
+      setup: (manager: { appendCustomEntry: (type: string, data: unknown) => void }) => Promise<void>;
+      withSession: (ctx: { reload: () => Promise<void> }) => Promise<void>;
+    }) => {
       await setup({ appendCustomEntry: (customType, data) => replacementEntries.push({ type: "custom", customType, data }) });
+      await withSession({ reload: async () => { reloads += 1; } });
       return { cancelled: false };
     },
   };
@@ -59,32 +69,39 @@ it("Pi commands and child tools cross the kernel authority seam", async () => {
   const prompt = await events.get("before_agent_start")!({ systemPromptOptions: { cwd } }, context);
   expect(prompt.systemPrompt).toContain("## Locked file: grilling/SKILL.md");
 
+  for (const tool of tools.values()) {
+    if ((tool.name as string).startsWith("propose_")) expect((tool.parameters as { properties: object }).properties).not.toHaveProperty("revision");
+  }
   const result = await (tools.get("propose_shared_understanding")!.execute as Function)("call", {
-    revision: 0, decisions: ["public seam"], glossary: [], adrs: [],
+    decisions: ["public seam"], glossary: [], adrs: [],
   }, undefined, undefined, context);
-  const proposalId = result.content[0].text.match(/[0-9a-f-]{36}/)![0];
-  expect(active).toEqual([]);
-  await (commands.get("crust")!.handler as Function)(`accept ${proposalId}`, context);
+  expect(result.content[0].text).toContain("accepted");
+  expect(aborted).toBe(1);
+  expect(deliveries.at(-1)).toBe("followUp");
   expect(sentUserMessages.at(-1)).toContain("Active state: SPECIFYING");
   expect(sentUserMessages.at(-1)).toContain("do not reopen prior gates");
   expect(active).toContain("propose_test_seams");
   expect(active).toContain("write");
   expect(notices.at(-1)).toContain("SPECIFYING");
 
-  const propose = async (name: string, params: Record<string, unknown>): Promise<string> => {
+  const propose = async (name: string, params: Record<string, unknown>): Promise<void> => {
     const output = await (tools.get(name)!.execute as Function)("call", params, undefined, undefined, context);
-    return output.content[0].text.match(/[0-9a-f-]{36}/)![0];
+    expect(output.content[0].text).toContain("accepted");
   };
-  let id = await propose("propose_test_seams", { revision: 2, seams: ["kernel/client"] });
-  await (commands.get("crust")!.handler as Function)(`accept ${id}`, context);
+  proposalDecision = "Reject";
+  const rejected = await (tools.get("propose_test_seams")!.execute as Function)("call", { seams: ["wrong seam"] }, undefined, undefined, context);
+  expect(rejected.content[0].text).toContain("rejected");
+  expect(sentUserMessages.at(-1)).toContain("needs revision");
+  expect(active).toContain("propose_test_seams");
+  proposalDecision = "Accept";
+  await propose("propose_test_seams", { seams: ["kernel/client"] });
   const staged = await (tools.get("stage_artifact")!.execute as Function)("call", { content: "# Spec", mediaType: "text/markdown" }, undefined, undefined, context);
-  id = await propose("propose_spec", { revision: 4, artifact: staged.details });
-  await (commands.get("crust")!.handler as Function)(`accept ${id}`, context);
-  id = await propose("propose_tickets", { revision: 6, tickets: [{ id: "a", title: "Ticket A", blockedBy: [] }] });
-  await (commands.get("crust")!.handler as Function)(`accept ${id}`, context);
+  await propose("propose_spec", { artifact: staged.details });
+  await propose("propose_tickets", { tickets: [{ id: "a", title: "Ticket A", blockedBy: [] }] });
   expect(active).toEqual([]);
+  expect(reloads).toBe(1);
   expect(replacementEntries).toEqual([{ type: "custom", customType: "crust-run", data: expect.objectContaining({ runId: expect.any(String) }) }]);
-  await expect((tools.get("propose_tickets")!.execute as Function)("stale", { revision: 9, tickets: [] }, undefined, undefined, context)).rejects.toThrow(/verified|bound/i);
+  await expect((tools.get("propose_tickets")!.execute as Function)("stale", { tickets: [] }, undefined, undefined, context)).rejects.toThrow(/verified|bound/i);
 
   const replacementEvents = new Map<string, Function>();
   let replacementActive: string[] = [];

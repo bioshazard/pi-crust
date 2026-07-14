@@ -12,9 +12,10 @@ pi --no-extensions --no-skills --no-prompt-templates --no-context-files \
   --no-builtin-tools --extension .pi/extensions/crust.ts
 ```
 
-Inside Pi, use `/crust start <idea>`, `/crust status`, `/crust accept <proposal>`,
-`/crust reject <proposal> [reason]`, `/crust evidence`, and `/crust next [ticket]`.
-Only the active state's proposal tool is exposed to the model.
+Inside Pi, use `/crust start <idea>`, `/crust status`, `/crust evidence`, and
+`/crust next [ticket]`. Proposal tools open the operator decision popup and advance
+automatically. `/crust accept` and `/crust reject` remain recovery commands. Only
+the active state's proposal tool is exposed to the model.
 Crust also activates a locked builtin-tool allowlist and bounded `stage_artifact` tool.
 
 Run `npm run test:live` for the opt-in stock-Pi/OAuth exercise; default tests remain model-free.

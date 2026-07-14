@@ -8,7 +8,6 @@ import { PocockClient, PROPOSAL_SCHEMAS, STAGE_ARTIFACT_SCHEMA } from "../pocock
 
 const BINDING = "crust-run";
 const revision = "d574778f94cf620fcc8ce741584093bc650a61d3";
-function payloadWithoutRevision(params: Record<string, unknown>): Record<string, unknown> { const { revision: _, ...payload } = params; return payload; }
 function bindingFrom(ctx: ExtensionContext): string | undefined {
   const entry = [...ctx.sessionManager.getEntries()].reverse().find((candidate) => candidate.type === "custom" && candidate.customType === BINDING);
   if (!entry || entry.type !== "custom" || !entry.data || typeof entry.data !== "object") return undefined;
@@ -20,6 +19,7 @@ export default function crustExtension(pi: ExtensionAPI): void {
   let kernel: CrustKernel | undefined;
   let runId: string | undefined;
   let enabled = false;
+  let commandContext: ExtensionCommandContext | undefined;
 
   const getKernel = (ctx: ExtensionContext): CrustKernel => {
     kernel ??= createCrustKernel({
@@ -72,10 +72,39 @@ export default function crustExtension(pi: ExtensionAPI): void {
         if (!enabled || !runId) throw new CrustError("RUN_NOT_BOUND", "No verified Crust run");
         const expected = getKernel(ctx).activeTool(runId);
         if (name !== expected) throw new CrustError("CAPABILITY_DENIED", `${name} is not active in this state`);
-        const values = params as Record<string, unknown>;
-        const run = await getKernel(ctx).child(runId, ctx.sessionManager.getSessionId()).propose(values.revision as number, payloadWithoutRevision(values));
+        const activeKernel = getKernel(ctx);
+        let run = activeKernel.run(runId);
+        run = await activeKernel.child(runId, ctx.sessionManager.getSessionId()).propose(run.revision, params);
         activate(run);
-        return { content: [{ type: "text", text: `Proposal ${run.proposals.at(-1)!.id} awaiting operator decision.` }], details: {} };
+        const proposalId = run.proposals.at(-1)!.id;
+        if (run.state === "SLICING" && !commandContext) {
+          ctx.ui.notify("Proposal saved. Use /crust status to restore operator session authority, then /crust accept as recovery.", "warning");
+          return { content: [{ type: "text", text: `Proposal ${proposalId} awaiting operator decision.` }], details: {} };
+        }
+        const decision = await ctx.ui.select("Decide proposal", ["Accept", "Reject"]);
+        if (!decision) return { content: [{ type: "text", text: `Proposal ${proposalId} awaiting operator decision.` }], details: {} };
+        if (decision === "Reject") {
+          const reason = await ctx.ui.input("Reject proposal", "Reason required");
+          if (!reason?.trim()) return { content: [{ type: "text", text: `Proposal ${proposalId} awaiting operator decision.` }], details: {} };
+          run = activeKernel.operator(runId).reject(run.revision, proposalId, reason.trim());
+          ctx.abort();
+          drive(run, `The previous proposal was rejected: ${reason.trim()}`);
+          return { content: [{ type: "text", text: `Proposal ${proposalId} rejected.` }], details: {} };
+        }
+        run = activeKernel.operator(runId).accept(run.revision, proposalId);
+        if (run.state === "SLICING" && run.shapingComplete) {
+          const choices = activeKernel.readyTickets(run.id);
+          const ticketId = choices.length === 1 ? choices[0]!.id : await ctx.ui.select("Start ready ticket", choices.map((ticket) => ticket.id));
+          if (!ticketId) return { content: [{ type: "text", text: `Proposal ${proposalId} accepted; ticket start pending.` }], details: {} };
+          run = activeKernel.operator(runId).startTicket(run.revision, ticketId);
+          ctx.abort();
+          await replaceSession(commandContext!, run.id);
+          return { content: [{ type: "text", text: `Proposal ${proposalId} accepted; ticket ${ticketId} started.` }], details: {} };
+        }
+        ctx.abort();
+        ctx.ui.notify(`Accepted; state ${run.state}.`, "info");
+        drive(run);
+        return { content: [{ type: "text", text: `Proposal ${proposalId} accepted; state ${run.state}.` }], details: {} };
       },
     });
   }
@@ -92,6 +121,7 @@ export default function crustExtension(pi: ExtensionAPI): void {
   pi.registerCommand("crust", {
     description: "start, resume, status, evidence, accept, reject, next",
     handler: async (args, ctx) => {
+      commandContext = ctx;
       try { await command(args.trim(), ctx); } catch (error) { ctx.ui.notify(message(error), "error"); }
     },
   });
@@ -153,13 +183,16 @@ export default function crustExtension(pi: ExtensionAPI): void {
 
   async function replaceSession(ctx: ExtensionCommandContext, id: string): Promise<void> {
     enabled = false; pi.setActiveTools([]);
-    const result = await ctx.newSession({ setup: async (manager) => { manager.appendCustomEntry(BINDING, { runId: id }); } });
+    const result = await ctx.newSession({
+      setup: async (manager) => { manager.appendCustomEntry(BINDING, { runId: id }); },
+      withSession: async (fresh) => { await fresh.reload(); },
+    });
     if (result.cancelled) throw new CrustError("SESSION_REPLACEMENT_CANCELLED", "Fresh ticket session was cancelled");
   }
   function drive(run: Run, suffix?: string): void {
     activate(run);
     const next = kernel?.nextAgentTurn(run.id);
-    if (next) pi.sendUserMessage(suffix ? `${next}\n${suffix}` : next);
+    if (next) pi.sendUserMessage(suffix ? `${next}\n${suffix}` : next, { deliverAs: "followUp" });
   }
 }
 

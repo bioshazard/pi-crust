@@ -3,13 +3,13 @@ import { Type } from "typebox";
 
 const artifactSchema = Type.Object({ hash: Type.String(), bytes: Type.Integer(), mediaType: Type.String() });
 export const PROPOSAL_SCHEMAS = {
-  propose_shared_understanding: Type.Object({ revision: Type.Integer(), decisions: Type.Array(Type.Unknown()), glossary: Type.Array(Type.Unknown()), adrs: Type.Array(Type.Unknown()) }),
-  propose_test_seams: Type.Object({ revision: Type.Integer(), seams: Type.Array(Type.Unknown()) }),
-  propose_spec: Type.Object({ revision: Type.Integer(), artifact: artifactSchema }),
-  propose_tickets: Type.Object({ revision: Type.Integer(), tickets: Type.Array(Type.Object({ id: Type.String(), title: Type.String(), blockedBy: Type.Array(Type.String()) })) }),
-  propose_ticket_ready_for_review: Type.Object({ revision: Type.Integer(), implementation: artifactSchema, tests: artifactSchema, typecheck: artifactSchema }),
-  propose_review: Type.Object({ revision: Type.Integer(), standardsFindings: Type.Array(Type.Unknown()), specificationFindings: Type.Array(Type.Unknown()) }),
-  propose_ticket_complete: Type.Object({ revision: Type.Integer(), commit: Type.String() }),
+  propose_shared_understanding: Type.Object({ decisions: Type.Array(Type.Unknown()), glossary: Type.Array(Type.Unknown()), adrs: Type.Array(Type.Unknown()) }),
+  propose_test_seams: Type.Object({ seams: Type.Array(Type.Unknown()) }),
+  propose_spec: Type.Object({ artifact: artifactSchema }),
+  propose_tickets: Type.Object({ tickets: Type.Array(Type.Object({ id: Type.String(), title: Type.String(), blockedBy: Type.Array(Type.String()) })) }),
+  propose_ticket_ready_for_review: Type.Object({ implementation: artifactSchema, tests: artifactSchema, typecheck: artifactSchema }),
+  propose_review: Type.Object({ standardsFindings: Type.Array(Type.Unknown()), specificationFindings: Type.Array(Type.Unknown()) }),
+  propose_ticket_complete: Type.Object({ commit: Type.String() }),
 } as const;
 export const STAGE_ARTIFACT_SCHEMA = Type.Object({ content: Type.String(), mediaType: Type.String() });
 const WORKING_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
