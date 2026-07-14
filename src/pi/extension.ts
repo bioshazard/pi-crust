@@ -4,7 +4,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createCrustKernel, type CrustKernel } from "../kernel/kernel.js";
 import { CrustError, type Run } from "../kernel/types.js";
-import { PocockClient, PROPOSAL_SCHEMAS, STAGE_ARTIFACT_SCHEMA } from "../pocock/client.js";
+import { PocockClient, PROPOSAL_SCHEMAS, REVIEW_AXES_SCHEMA, STAGE_ARTIFACT_SCHEMA } from "../pocock/client.js";
+import { runReviewAxes } from "./review.js";
 
 const BINDING = "crust-run";
 const revision = "d574778f94cf620fcc8ce741584093bc650a61d3";
@@ -81,7 +82,7 @@ export default function crustExtension(pi: ExtensionAPI): void {
           ctx.ui.notify("Proposal saved. Use /crust status to restore operator session authority, then /crust accept as recovery.", "warning");
           return { content: [{ type: "text", text: `Proposal ${proposalId} awaiting operator decision.` }], details: {} };
         }
-        const decision = await ctx.ui.select("Decide proposal", ["Accept", "Reject"]);
+        const decision = await chooseProposal(ctx, activeKernel, run.id, proposalId);
         if (!decision) return { content: [{ type: "text", text: `Proposal ${proposalId} awaiting operator decision.` }], details: {} };
         if (decision === "Reject") {
           const reason = await ctx.ui.input("Reject proposal", "Reason required");
@@ -115,6 +116,22 @@ export default function crustExtension(pi: ExtensionAPI): void {
       if (!enabled || !runId) throw new CrustError("RUN_NOT_BOUND", "No verified Crust run");
       const ref = await getKernel(ctx).child(runId, ctx.sessionManager.getSessionId()).stageArtifact(params.content, params.mediaType);
       return { content: [{ type: "text", text: JSON.stringify(ref) }], details: ref };
+    },
+  });
+
+  pi.registerTool({
+    name: "run_review_axes", label: "Run Crust review axes", description: "Run isolated read-only standards and specification reviewers in parallel.", parameters: REVIEW_AXES_SCHEMA,
+    async execute(_callId, _params, signal, _update, ctx) {
+      if (!enabled || !runId) throw new CrustError("RUN_NOT_BOUND", "No verified Crust run");
+      const activeKernel = getKernel(ctx);
+      if (!activeKernel.activeTools(runId).includes("run_review_axes")) throw new CrustError("CAPABILITY_DENIED", "Review axes are not active in this state");
+      const brief = await activeKernel.reviewBrief(runId);
+      const reports = await runReviewAxes({ cwd: ctx.cwd, provider: ctx.model?.provider ?? "openai-codex", model: ctx.model?.id ?? "gpt-5.4", thinking: pi.getThinkingLevel(), ...brief, signal });
+      const child = activeKernel.child(runId, ctx.sessionManager.getSessionId());
+      const run = activeKernel.run(runId);
+      const recorded = await child.recordReviewReports(run.revision, reports.standards, reports.specification);
+      const { standards: standardsReport, specification: specificationReport } = recorded.reviewReports!;
+      return { content: [{ type: "text", text: JSON.stringify({ standardsReport, specificationReport, ...reports }, null, 2) }], details: { standardsReport, specificationReport, ...reports } };
     },
   });
 
@@ -152,7 +169,9 @@ export default function crustExtension(pi: ExtensionAPI): void {
     if (verb === "evidence") { ctx.ui.notify(JSON.stringify(run.evidence, null, 2), "info"); return; }
     if (verb === "accept") {
       const proposalId = rest[0]; if (!proposalId) throw new CrustError("PROPOSAL_REQUIRED", "Usage: /crust accept <proposal-id>");
-      if (!await ctx.ui.confirm("Accept proposal", proposalId)) return;
+      const presentation = await activeKernel.proposalPresentation(runId, proposalId);
+      await ctx.ui.editor("Recovery proposal inspection", presentation.full);
+      if (!await ctx.ui.confirm("Accept proposal", presentation.summary)) return;
       run = activeKernel.operator(runId).accept(run.revision, proposalId);
       if (run.state === "SLICING" && run.shapingComplete) {
         const choices = activeKernel.readyTickets(run.id);
@@ -168,7 +187,9 @@ export default function crustExtension(pi: ExtensionAPI): void {
     }
     if (verb === "reject") {
       const proposalId = rest.shift(); if (!proposalId) throw new CrustError("PROPOSAL_REQUIRED", "Usage: /crust reject <proposal-id> [reason]");
-      if (!await ctx.ui.confirm("Reject proposal", proposalId)) return;
+      const presentation = await activeKernel.proposalPresentation(runId, proposalId);
+      await ctx.ui.editor("Recovery proposal inspection", presentation.full);
+      if (!await ctx.ui.confirm("Reject proposal", presentation.summary)) return;
       const reason = rest.join(" ") || "operator rejected";
       run = activeKernel.operator(runId).reject(run.revision, proposalId, reason); activate(run);
       drive(run, `The previous proposal was rejected: ${reason}`);
@@ -188,6 +209,14 @@ export default function crustExtension(pi: ExtensionAPI): void {
       withSession: async (fresh) => { await fresh.reload(); },
     });
     if (result.cancelled) throw new CrustError("SESSION_REPLACEMENT_CANCELLED", "Fresh ticket session was cancelled");
+  }
+  async function chooseProposal(ctx: ExtensionContext, activeKernel: CrustKernel, id: string, proposalId: string): Promise<string | undefined> {
+    const presentation = await activeKernel.proposalPresentation(id, proposalId);
+    while (true) {
+      const decision = await ctx.ui.select(`Proposal: ${presentation.summary}`, ["Inspect full proposal", "Accept", "Reject"]);
+      if (decision !== "Inspect full proposal") return decision;
+      await ctx.ui.editor("Full immutable proposal", presentation.full);
+    }
   }
   function drive(run: Run, suffix?: string): void {
     activate(run);

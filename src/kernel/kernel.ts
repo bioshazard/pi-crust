@@ -143,6 +143,17 @@ export function createCrustKernel(options: KernelOptions) {
       return {
         toolName: client.toolName(initial),
         async stageArtifact(data: string | Uint8Array, mediaType?: string): Promise<ArtifactRef> { return objects.put(data, mediaType); },
+        async recordReviewReports(expectedRevision: number, standards: string, specification: string): Promise<Run> {
+          const before = store.get(runId); assertSession(before, sessionId);
+          if (before.state !== "REVIEWING" || before.proposals.some((proposal) => proposal.status === "pending")) throw new CrustError("REVIEW_NOT_ACTIVE", "Review reports can only be recorded at the open review frontier");
+          const [standardsRef, specificationRef] = await Promise.all([objects.put(standards, "text/markdown"), objects.put(specification, "text/markdown")]);
+          return store.mutate(runId, expectedRevision, (run) => {
+            assertSession(run, sessionId);
+            if (run.state !== "REVIEWING" || run.proposals.some((proposal) => proposal.status === "pending")) throw new CrustError("REVIEW_NOT_ACTIVE", "Review frontier changed");
+            run.reviewReports = { standards: standardsRef, specification: specificationRef };
+            appendReceipt(run, "evidence", { reviewReports: run.reviewReports });
+          });
+        },
         async propose(expectedRevision: number, payload: unknown): Promise<Run> {
           const before = store.get(runId); assertSession(before, sessionId); client.validate(before, payload);
           for (const ref of client.artifactRefs(before, payload)) await objects.get(ref);
@@ -178,6 +189,24 @@ export function createCrustKernel(options: KernelOptions) {
       return run;
     },
     readArtifact(ref: ArtifactRef): Promise<Buffer> { return objects.get(ref); },
+    async reviewBrief(runId: string): Promise<{ specification: string; ticket: string }> {
+      const run = store.get(runId);
+      const ticket = run.tickets.find((candidate) => candidate.id === run.activeTicketId);
+      if (run.state !== "REVIEWING" || !run.spec || !ticket) throw new CrustError("REVIEW_NOT_ACTIVE", "No active review brief");
+      return { specification: (await objects.get(run.spec)).toString("utf8"), ticket: canonical({ id: ticket.id, title: ticket.title, whatToBuild: ticket.whatToBuild, acceptanceCriteria: ticket.acceptanceCriteria, blockedBy: ticket.blockedBy }) };
+    },
+    async proposalPresentation(runId: string, proposalId: string): Promise<{ summary: string; full: string }> {
+      const run = store.get(runId);
+      const proposal = run.proposals.find((candidate) => candidate.id === proposalId);
+      if (!proposal) throw new CrustError("PROPOSAL_REQUIRED", `Unknown proposal ${proposalId}`);
+      const artifacts = await Promise.all(client.artifactRefs(run, proposal.payload).map(async (ref) => ({ ref, body: (await objects.get(ref)).toString("utf8") })));
+      const artifactText = artifacts.map(({ ref, body }) => `## Artifact ${ref.hash} (${ref.mediaType})\n${body}`).join("\n\n");
+      const excerpt = artifacts[0]?.body.trim().slice(0, 600);
+      return {
+        summary: `${client.proposalSummary(proposal)}${excerpt ? `\n\nArtifact preview:\n${excerpt}` : ""}`,
+        full: `# ${proposal.kind}\n\n${canonical(proposal.payload)}${artifactText ? `\n\n${artifactText}` : ""}`,
+      };
+    },
     async lockedPrompt(runId: string, sessionId: string): Promise<string> {
       const run = store.get(runId); assertSession(run, sessionId);
       const bodies = await readComposition(run);
@@ -187,13 +216,17 @@ export function createCrustKernel(options: KernelOptions) {
         if (!files.includes(`${skill}/SKILL.md`)) throw new CrustError("COMPOSITION_MISSING", `Locked skill ${skill} is missing`);
         return files.map((path) => `## Locked file: ${path}\n${Buffer.from(bodies[path]!, "base64").toString("utf8")}`).join("\n\n");
       }).join("\n\n");
-      return `${client.policy}\n\n${skillText}\n\n## Crust projection\n${canonical(client.projection(run))}`;
+      const activeTicket = run.tickets.find((ticket) => ticket.id === run.activeTicketId);
+      const boundedWork = activeTicket && run.spec
+        ? `\n\n## Accepted specification\n${(await objects.get(run.spec)).toString("utf8")}\n\n## Active ticket contract\n${canonical({ id: activeTicket.id, title: activeTicket.title, whatToBuild: activeTicket.whatToBuild, acceptanceCriteria: activeTicket.acceptanceCriteria, blockedBy: activeTicket.blockedBy })}\n\nImplement only this active ticket. Do not implement later tickets.`
+        : "";
+      return `${client.policy}\n\n${skillText}${boundedWork}\n\n## Crust projection\n${canonical(client.projection(run))}`;
     },
     activeTool(runId: string): string { return client.toolName(store.get(runId)); },
     activeTools(runId: string): string[] {
       const run = store.get(runId);
       if (run.proposals.some((proposal) => proposal.status === "pending")) return [];
-      try { return [...client.builtinTools(run.state), "stage_artifact", client.toolName(run)]; }
+      try { return [...client.builtinTools(run.state), ...client.supplementalTools(run.state), "stage_artifact", client.toolName(run)]; }
       catch { return []; }
     },
     nextAgentTurn(runId: string): string | null {

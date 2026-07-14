@@ -34,6 +34,7 @@ async function accept(run: Run, kernel: Awaited<ReturnType<typeof harness>>["ker
   const proposal = await kernel.child(run.id, session).propose(run.revision, payload);
   return kernel.operator(run.id).accept(proposal.revision, proposal.proposals.at(-1)!.id);
 }
+const ticket = (id: string, title: string, blockedBy: string[] = []) => ({ id, title, whatToBuild: `Build ${title}`, acceptanceCriteria: [`${title} works`], blockedBy });
 
 describe("public kernel/client seam", () => {
   it("drives a multi-ticket canonical spine with shaping and ticket session boundaries", async () => {
@@ -50,8 +51,8 @@ describe("public kernel/client seam", () => {
     run = await accept(run, kernel, "shape", { artifact: spec });
     expect(run.state).toBe("SLICING");
     run = await accept(run, kernel, "shape", { tickets: [
-      { id: "a", title: "Tracer A", blockedBy: [] },
-      { id: "b", title: "Tracer B", blockedBy: ["a"] },
+      ticket("a", "Tracer A"),
+      ticket("b", "Tracer B", ["a"]),
     ] });
     expect(run.state).toBe("SLICING");
     expect(run.sessions).toHaveLength(1);
@@ -59,14 +60,25 @@ describe("public kernel/client seam", () => {
     run = kernel.operator(run.id).startTicket(run.revision, "a");
     expect(() => kernel.child(run.id, "shape")).toThrowError(CrustError);
     run = kernel.operator(run.id).restoreSession(run.revision, "ticket-a");
+    const ticketPrompt = await kernel.lockedPrompt(run.id, "ticket-a");
+    expect(ticketPrompt).toContain("# Spec");
+    expect(ticketPrompt).toContain("Build Tracer A");
+    expect(ticketPrompt).toContain("Tracer A works");
+    expect(ticketPrompt).not.toContain("Build Tracer B");
     const implementation = await artifact(kernel.child(run.id, "ticket-a"), "diff");
     const tests = await artifact(kernel.child(run.id, "ticket-a"), "tests pass");
     const types = await artifact(kernel.child(run.id, "ticket-a"), "types pass");
     run = await accept(run, kernel, "ticket-a", { implementation, tests, typecheck: types });
     expect(run.state).toBe("REVIEWING");
+    expect(kernel.activeTools(run.id)).toContain("run_review_axes");
+    expect(kernel.activeTools(run.id)).not.toContain("write");
+    await expect(kernel.child(run.id, "ticket-a").propose(run.revision, { standardsFindings: ["fix naming"], specificationFindings: [] })).rejects.toThrow(/report/i);
+    run = await kernel.child(run.id, "ticket-a").recordReviewReports(run.revision, "standards report", "specification report");
     run = await accept(run, kernel, "ticket-a", { standardsFindings: ["fix naming"], specificationFindings: [] });
     expect(run.state).toBe("FIXING");
     run = await accept(run, kernel, "ticket-a", { implementation, tests, typecheck: types });
+    expect(run.reviewReports).toBeUndefined();
+    run = await kernel.child(run.id, "ticket-a").recordReviewReports(run.revision, "clean standards", "clean specification");
     run = await accept(run, kernel, "ticket-a", { standardsFindings: [], specificationFindings: [] });
     expect(run.state).toBe("COMMITTING");
     run = await accept(run, kernel, "ticket-a", { commit: "a".repeat(40) });
@@ -81,6 +93,7 @@ describe("public kernel/client seam", () => {
     const testB = await artifact(childB, "tests b");
     const typeB = await artifact(childB, "types b");
     run = await accept(run, kernel, "ticket-b", { implementation: implB, tests: testB, typecheck: typeB });
+    run = await kernel.child(run.id, "ticket-b").recordReviewReports(run.revision, "standards b", "specification b");
     run = await accept(run, kernel, "ticket-b", { standardsFindings: [], specificationFindings: [] });
     run = await accept(run, kernel, "ticket-b", { commit: "b".repeat(40) });
     run = kernel.operator(run.id).finish(run.revision);
@@ -131,10 +144,11 @@ describe("public kernel/client seam", () => {
     run = await accept(run, kernel, "shape", { seams: ["public seam"] });
     const spec = await kernel.child(run.id, "shape").stageArtifact("spec", "text/markdown");
     run = await accept(run, kernel, "shape", { artifact: spec });
+    await expect(kernel.child(run.id, "shape").propose(run.revision, { tickets: [{ id: "thin", title: "thin", blockedBy: [] }] })).rejects.toThrow(/whatToBuild/i);
     await expect(kernel.child(run.id, "shape").propose(run.revision, { tickets: [
-      { id: "a", title: "a", blockedBy: ["b"] }, { id: "b", title: "b", blockedBy: ["a"] },
+      ticket("a", "a", ["b"]), ticket("b", "b", ["a"]),
     ] })).rejects.toThrow(/acyclic/i);
-    run = await accept(run, kernel, "shape", { tickets: [{ id: "a", title: "a", blockedBy: [] }, { id: "b", title: "b", blockedBy: ["a"] }] });
+    run = await accept(run, kernel, "shape", { tickets: [ticket("a", "a"), ticket("b", "b", ["a"])] });
     expect(() => kernel.operator(run.id).startTicket(run.revision, "b")).toThrow(/ready/i);
 
     const objectPath = join(root, ".crust", "objects", spec.hash.slice(0, 2), spec.hash.slice(2));

@@ -34,6 +34,8 @@ export interface CompositionLock {
 export interface Ticket {
   id: string;
   title: string;
+  whatToBuild: string;
+  acceptanceCriteria: string[];
   blockedBy: string[];
   status: "pending" | "active" | "accepted";
   evidence: ArtifactRef[];
@@ -85,6 +87,7 @@ export interface Run {
   shapingComplete: boolean;
   activeTicketId?: string;
   evidence: ArtifactRef[];
+  reviewReports?: { standards: ArtifactRef; specification: ArtifactRef };
   proposals: Proposal[];
   receipts: Receipt[];
   sessions: SessionBinding[];

@@ -32,4 +32,10 @@ The launcher installs the pinned project-local skills when needed, then runs iso
 Pi with workflow state stored under the target's `.crust/` directory. Its private lock
 does not replace the target's existing skills setup.
 
+Proposal dialogs show a deterministic summary and can open the full immutable payload
+and artifacts before acceptance. Tickets retain their work contract and acceptance
+criteria; each fresh ticket session receives resolved specification and ticket content.
+Review runs isolated read-only Standards and Specification agents in parallel before a
+review proposal becomes legal.
+
 Without linking, use `npm run crust -- /path/to/target` from this checkout.
