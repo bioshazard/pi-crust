@@ -1,7 +1,6 @@
 import { join } from "node:path";
-import { digest } from "../../kernel/hash.js";
-import { ObjectStore } from "../../kernel/objects.js";
-import type { NaturalStopAgent, NaturalStopRequest } from "../../headless/natural-stop.js";
+import { createCrustSdk } from "../../sdk/index.js";
+import type { NaturalStopAgent, NaturalStopRequest } from "../../sdk/index.js";
 import { PwbotStore } from "./store.js";
 import type { DeliveryPackage, KarmaOutcome, PwbotInput, PwbotMessageInput, PwbotResult, PwbotRun } from "./types.js";
 
@@ -16,9 +15,10 @@ export function createPwbotMachine(options: {
   for (const [emoji, value] of Object.entries(reactionValues)) {
     if (!emoji || !Number.isFinite(value) || value <= 0) throw new Error("Reaction karma values must be finite positive numbers");
   }
-  const store = new PwbotStore(join(options.root, "pwbot.sqlite"));
-  const objects = new ObjectStore(join(options.root, "objects"));
-  const compositionHash = digest({ client: "pwbot-v1", projection: "pwbot-projection-v1", reactionValues });
+  const crust = createCrustSdk({ root: options.root });
+  const store = new PwbotStore(join(options.root, "pwbot.sqlite"), crust);
+  const objects = crust.artifacts;
+  const compositionHash = crust.identity({ client: "pwbot-v1", projection: "pwbot-projection-v1", reactionValues });
 
   return {
     async handle(input: PwbotInput): Promise<PwbotResult> {
@@ -28,7 +28,7 @@ export function createPwbotMachine(options: {
       if (input.kind === "reaction" || isKarmaOnly(input)) return result(store.completeDeterministic(run));
 
       const request = project(input, run.karma, store);
-      run = store.recordProjection(run, digest(request));
+      run = store.recordProjection(run, crust.identity(request));
       let stop;
       try {
         stop = await options.agent.run(request);

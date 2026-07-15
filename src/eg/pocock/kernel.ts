@@ -1,13 +1,11 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { PocockClient } from "../eg/pocock/client.js";
-import { canonical, digest, id, sha256 } from "./hash.js";
-import { directoryHash, ObjectStore } from "./objects.js";
+import { createCrustSdk, canonical, digest, directoryHash, id, sha256, CrustError, type ArtifactRef } from "../../sdk/index.js";
+import { PocockClient } from "./client.js";
 import { SqliteRunStore } from "./store.js";
-import { CrustError, type ArtifactRef, type CompositionLock, type Proposal, type Receipt, type Run } from "./types.js";
-import { appendReceipt } from "./receipts.js";
+import type { CompositionLock, Proposal, Receipt, Run } from "./types.js";
 
-export interface KernelOptions {
+export interface PocockKernelOptions {
   root: string;
   client: PocockClient;
   skills: { dir: string; source: string; revision: string; lock: Record<string, string> };
@@ -16,12 +14,13 @@ export interface KernelOptions {
 
 const now = (): string => new Date().toISOString();
 
-export function createCrustKernel(options: KernelOptions) {
-  const objects = new ObjectStore(join(options.root, "objects"));
-  const store = new SqliteRunStore(join(options.root, "crust.sqlite"));
+export function createPocockKernel(options: PocockKernelOptions) {
+  const crust = createCrustSdk({ root: options.root });
+  const objects = crust.artifacts;
+  const store = new SqliteRunStore(join(options.root, "crust.sqlite"), crust);
   const client = options.client;
 
-  const record = (run: Run, type: Receipt["type"], payload: unknown): void => appendReceipt(run.receipts, type, payload);
+  const record = (run: Run, type: Receipt["type"], payload: unknown): void => crust.journal(run.receipts).record(type, payload);
 
   const assertSession = (run: Run, sessionId: string): void => {
     if (!run.sessions.some((session) => session.active && session.sessionId === sessionId)) throw new CrustError("STALE_SESSION", `Session ${sessionId} is not bound to run ${run.id}`);
@@ -170,7 +169,7 @@ export function createCrustKernel(options: KernelOptions) {
     },
     operator,
     projection(runId: string, sessionId: string) { const run = store.get(runId); assertSession(run, sessionId); return client.projection(run); },
-    verifyResume(runId: string, runtimeOverride: Partial<KernelOptions["runtime"]> = {}): Run {
+    verifyResume(runId: string, runtimeOverride: Partial<PocockKernelOptions["runtime"]> = {}): Run {
       const run = store.get(runId);
       const actual = { ...options.runtime, ...runtimeOverride };
       const expected = expectedCompositionIdentity(actual);
@@ -236,4 +235,4 @@ export function createCrustKernel(options: KernelOptions) {
   };
 }
 
-export type CrustKernel = ReturnType<typeof createCrustKernel>;
+export type PocockKernel = ReturnType<typeof createPocockKernel>;

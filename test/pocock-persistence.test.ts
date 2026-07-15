@@ -3,9 +3,9 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { expect, it } from "vitest";
-import { createCrustKernel } from "../src/kernel/kernel.js";
-import { directoryHash } from "../src/kernel/objects.js";
 import { PocockClient } from "../src/eg/pocock/client.js";
+import { createPocockKernel } from "../src/eg/pocock/kernel.js";
+import { directoryHash } from "../src/sdk/index.js";
 
 it("keeps normalized authoritative rows and rejects persisted tampering", async () => {
   const root = await mkdtemp(join(tmpdir(), "crust-persistence-"));
@@ -16,7 +16,7 @@ it("keeps normalized authoritative rows and rejects persisted tampering", async 
   }
   const lock = Object.fromEntries(await Promise.all(["grill-with-docs", "grilling", "domain-modeling", "to-spec", "codebase-design", "to-tickets", "implement", "tdd", "code-review"].map(async (name) => [name, await directoryHash(join(skills, name))])));
   const database = join(root, ".crust", "crust.sqlite");
-  const kernel = createCrustKernel({ root: join(root, ".crust"), client: new PocockClient(), skills: { dir: skills, source: "mattpocock/skills", revision: "d574778f94cf620fcc8ce741584093bc650a61d3", lock }, runtime: { provider: "openai-codex", model: "gpt-5.4", thinking: "high" } });
+  const kernel = createPocockKernel({ root: join(root, ".crust"), client: new PocockClient(), skills: { dir: skills, source: "mattpocock/skills", revision: "d574778f94cf620fcc8ce741584093bc650a61d3", lock }, runtime: { provider: "openai-codex", model: "gpt-5.4", thinking: "high" } });
   let run = await kernel.createRun({ idea: "persist", sessionId: "shape" });
   run = await kernel.child(run.id, "shape").propose(run.revision, { decisions: ["one"], glossary: [], adrs: [] });
 

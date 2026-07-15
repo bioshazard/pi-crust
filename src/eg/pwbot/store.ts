@@ -1,10 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { digest, id } from "../../kernel/hash.js";
-import { appendReceipt, assertReceiptChain } from "../../kernel/receipts.js";
-import type { ArtifactRef } from "../../kernel/types.js";
-import type { NaturalStop } from "../../headless/natural-stop.js";
+import { digest, type ArtifactRef, type CrustSdk } from "../../sdk/index.js";
+import type { NaturalStop } from "../../sdk/index.js";
 import type { DeliveryPackage, KarmaOutcome, PwbotInput, PwbotRun } from "./types.js";
 
 const receiptTypes = new Set(["input", "transition", "karma", "agent_stop", "byproduct", "failure"]);
@@ -12,7 +10,7 @@ const receiptTypes = new Set(["input", "transition", "karma", "agent_stop", "byp
 export class PwbotStore {
   private readonly db: DatabaseSync;
 
-  constructor(path: string) {
+  constructor(path: string, private readonly crust: CrustSdk) {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.exec(`
@@ -42,7 +40,7 @@ export class PwbotStore {
         run.state = "RUNNING";
         run.attempt += 1;
         delete run.error;
-        appendReceipt(run.receipts, "transition", { from, to: "RUNNING", reason: "retry" });
+        this.crust.journal(run.receipts).record("transition", { from, to: "RUNNING", reason: "retry" });
       });
     }
 
@@ -50,11 +48,12 @@ export class PwbotStore {
     try {
       const createdAt = new Date().toISOString();
       const receipts: PwbotRun["receipts"] = [];
-      appendReceipt(receipts, "input", { eventId: input.eventId, inputHash, compositionHash, kind: input.kind }, createdAt);
-      appendReceipt(receipts, "transition", { from: "RECEIVED", to: "RUNNING" }, createdAt);
+      const journal = this.crust.journal(receipts);
+      journal.record("input", { eventId: input.eventId, inputHash, compositionHash, kind: input.kind }, createdAt);
+      journal.record("transition", { from: "RECEIVED", to: "RUNNING" }, createdAt);
       const karma = proposed.map((outcome) => {
         if (!outcome.allowed) {
-          appendReceipt(receipts, "karma", outcome, createdAt);
+          journal.record("karma", outcome, createdAt);
           return outcome;
         }
         const before = this.score(outcome.target);
@@ -64,7 +63,7 @@ export class PwbotStore {
           ON CONFLICT(principal) DO UPDATE SET score=excluded.score
         `).run(outcome.target, score);
         const applied = { ...outcome, score };
-        appendReceipt(receipts, "karma", applied, createdAt);
+        journal.record("karma", applied, createdAt);
         return applied;
       });
       const run: PwbotRun = {
@@ -89,9 +88,10 @@ export class PwbotStore {
 
   complete(run: PwbotRun, stop: NaturalStop, artifact: ArtifactRef, delivery: DeliveryPackage): PwbotRun {
     return this.mutate(run.id, run.revision, (current) => {
-      appendReceipt(current.receipts, "agent_stop", { stopReason: stop.stopReason, identity: stop.identity, artifact });
-      appendReceipt(current.receipts, "byproduct", { delivery, artifact });
-      appendReceipt(current.receipts, "transition", { from: "RUNNING", to: "COMPLETED" });
+      const journal = this.crust.journal(current.receipts);
+      journal.record("agent_stop", { stopReason: stop.stopReason, identity: stop.identity, artifact });
+      journal.record("byproduct", { delivery, artifact });
+      journal.record("transition", { from: "RUNNING", to: "COMPLETED" });
       current.state = "COMPLETED";
       current.replyArtifact = artifact;
       current.delivery = delivery;
@@ -101,7 +101,7 @@ export class PwbotStore {
 
   completeDeterministic(run: PwbotRun): PwbotRun {
     return this.mutate(run.id, run.revision, (current) => {
-      appendReceipt(current.receipts, "transition", { from: "RUNNING", to: "COMPLETED", reason: "deterministic effect complete" });
+      this.crust.journal(current.receipts).record("transition", { from: "RUNNING", to: "COMPLETED", reason: "deterministic effect complete" });
       current.state = "COMPLETED";
       delete current.error;
     });
@@ -109,9 +109,10 @@ export class PwbotStore {
 
   fail(run: PwbotRun, stop: NaturalStop | undefined, error: string): PwbotRun {
     return this.mutate(run.id, run.revision, (current) => {
-      if (stop) appendReceipt(current.receipts, "agent_stop", { stopReason: stop.stopReason, identity: stop.identity });
-      appendReceipt(current.receipts, "failure", { error });
-      appendReceipt(current.receipts, "transition", { from: "RUNNING", to: "FAILED" });
+      const journal = this.crust.journal(current.receipts);
+      if (stop) journal.record("agent_stop", { stopReason: stop.stopReason, identity: stop.identity });
+      journal.record("failure", { error });
+      journal.record("transition", { from: "RUNNING", to: "FAILED" });
       current.state = "FAILED";
       current.error = error;
       delete current.delivery;
@@ -138,7 +139,7 @@ export class PwbotStore {
     let run: PwbotRun;
     try { run = JSON.parse(row.body) as PwbotRun; } catch { throw new Error(`Invalid pwbot run ${id}`); }
     if (run.id !== id || run.revision !== row.revision || run.inputHash !== row.input_hash || digest(run.input) !== run.inputHash || !/^[a-f0-9]{64}$/.test(run.compositionHash)) throw new Error(`Pwbot run ${id} failed validation`);
-    assertReceiptChain(run.receipts, receiptTypes);
+    this.crust.journal(run.receipts).verify(receiptTypes);
     return structuredClone(run);
   }
 

@@ -1,1 +1,1 @@
-export { default } from "../../src/pi/extension.js";
+export { default } from "../../src/eg/pocock/pi-extension.js";

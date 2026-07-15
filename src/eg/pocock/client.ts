@@ -1,4 +1,5 @@
-import { CrustError, type ArtifactRef, type Proposal, type ProposalKind, type Projection, type Run, type State, type Ticket } from "../../kernel/types.js";
+import { CrustError, type ArtifactRef } from "../../sdk/index.js";
+import type { Proposal, ProposalKind, Projection, Run, State, Ticket } from "./types.js";
 import { Type } from "typebox";
 
 const artifactSchema = Type.Object({ hash: Type.String(), bytes: Type.Integer(), mediaType: Type.String() });

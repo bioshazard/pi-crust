@@ -1,5 +1,4 @@
-import type { ArtifactRef } from "../../kernel/types.js";
-import type { ChainedReceipt } from "../../kernel/receipts.js";
+import type { ArtifactRef, ChainedReceipt } from "../../sdk/index.js";
 
 export interface ThreadMessage {
   id: string;

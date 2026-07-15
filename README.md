@@ -1,16 +1,28 @@
 # pi-crust
 
-Pi-native, durable Pocock v1.1 workflow POC. Stock Pi loads the project-local
-extension at `.pi/extensions/crust.ts`; SQLite and `.crust/objects` hold workflow
-authority and immutable evidence.
+Durable agent-control experiments over a small Crust kernel and its opinionated
+helper SDK.
+
+```text
+src/kernel  proven low-level mechanisms; no Pi or protocol dependency
+src/sdk     supported helper interface for consistent kernel use
+src/eg      opinionated protocols and their adapters
+```
+
+The kernel currently provides canonical identity, verified content-addressed
+objects, receipt chains, and common errors. The SDK roots those mechanisms for a
+run store and supplies the optional Pi natural-stop adapter. Protocols retain their
+own state machines and transactional schemas until repetition earns a deeper shared
+interface.
 
 Crust now has two deliberately different example clients:
 
 - `src/eg/pocock`: interactive Pi-TUI workflow; terminal proposals require a human decision.
 - `src/eg/pwbot`: headless Slack-thread workflow; a fresh Pi SDK run ends naturally and emits a delivery package. Configured karma reactions terminate without invoking Pi.
 
-They share durable objects and hash-chained receipts, not one universal workflow
-interface. TUI session control and natural-stop execution remain separate adapters.
+They consume the SDK but do not share a universal workflow interface. Pocock owns
+its TUI/HITL behavior; pwbot uses natural-stop execution only when deterministic
+handling is insufficient.
 
 ```sh
 npm install

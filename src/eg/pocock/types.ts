@@ -7,11 +7,7 @@ export type ProposalKind =
   | "shared_understanding" | "test_seams" | "spec" | "tickets"
   | "ticket_ready_for_review" | "review" | "ticket_complete";
 
-export interface ArtifactRef {
-  hash: string;
-  bytes: number;
-  mediaType: string;
-}
+import type { ArtifactRef } from "../../sdk/index.js";
 
 export interface CompositionLock {
   source: string;
@@ -110,11 +106,4 @@ export interface Projection {
   evidence: ArtifactRef[];
   pendingProposals: string[];
   terminalContract: string;
-}
-
-export class CrustError extends Error {
-  constructor(public readonly code: string, message: string) {
-    super(message);
-    this.name = "CrustError";
-  }
 }

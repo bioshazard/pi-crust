@@ -1,8 +1,14 @@
 import { lstat, mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { CrustError, type ArtifactRef } from "./types.js";
+import { CrustError } from "./error.js";
 import { canonical, sha256 } from "./hash.js";
+
+export interface ArtifactRef {
+  hash: string;
+  bytes: number;
+  mediaType: string;
+}
 
 export async function directoryHash(directory: string): Promise<string> {
   const files: Array<{ path: string; content: Buffer }> = [];

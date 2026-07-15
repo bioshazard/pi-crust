@@ -2,10 +2,10 @@ import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { expect, it } from "vitest";
-import crustExtension from "../src/pi/extension.js";
-import { directoryHash } from "../src/kernel/objects.js";
+import crustExtension from "../src/eg/pocock/pi-extension.js";
+import { directoryHash } from "../src/sdk/index.js";
 
-it("Pi commands and child tools cross the kernel authority seam", async () => {
+it("Pi commands and child tools cross the Pocock authority seam", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "crust-pi-test-"));
   const names = ["grill-with-docs", "grilling", "domain-modeling", "to-spec", "codebase-design", "to-tickets", "implement", "tdd", "code-review"];
   for (const name of names) {

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createPwbotMachine, type PwbotInput } from "../src/eg/pwbot/machine.js";
-import type { NaturalStopAgent, NaturalStopRequest } from "../src/headless/natural-stop.js";
+import type { NaturalStopAgent, NaturalStopRequest } from "../src/sdk/index.js";
 
 const input = (eventId: string, text: string, userId = "U1"): PwbotInput => ({
   kind: "message",

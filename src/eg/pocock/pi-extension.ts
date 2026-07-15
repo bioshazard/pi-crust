@@ -2,10 +2,11 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@e
 import type { Static, TSchema } from "typebox";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createCrustKernel, type CrustKernel } from "../kernel/kernel.js";
-import { CrustError, type Run } from "../kernel/types.js";
-import { PocockClient, PROPOSAL_SCHEMAS, REVIEW_AXES_SCHEMA, STAGE_ARTIFACT_SCHEMA } from "../eg/pocock/client.js";
+import { CrustError } from "../../sdk/index.js";
+import { PocockClient, PROPOSAL_SCHEMAS, REVIEW_AXES_SCHEMA, STAGE_ARTIFACT_SCHEMA } from "./client.js";
+import { createPocockKernel, type PocockKernel } from "./kernel.js";
 import { runReviewAxes } from "./review.js";
+import type { Run } from "./types.js";
 
 const BINDING = "crust-run";
 const revision = "d574778f94cf620fcc8ce741584093bc650a61d3";
@@ -17,13 +18,13 @@ function bindingFrom(ctx: ExtensionContext): string | undefined {
 }
 
 export default function crustExtension(pi: ExtensionAPI): void {
-  let kernel: CrustKernel | undefined;
+  let kernel: PocockKernel | undefined;
   let runId: string | undefined;
   let enabled = false;
   let commandContext: ExtensionCommandContext | undefined;
 
-  const getKernel = (ctx: ExtensionContext): CrustKernel => {
-    kernel ??= createCrustKernel({
+  const getKernel = (ctx: ExtensionContext): PocockKernel => {
+    kernel ??= createPocockKernel({
       root: join(ctx.cwd, ".crust"), client: new PocockClient(),
       skills: { dir: skillDirectory(ctx.cwd), source: "mattpocock/skills", revision, lock: skillLock(ctx.cwd) },
       runtime: { provider: ctx.model?.provider ?? "openai-codex", model: ctx.model?.id ?? "gpt-5.4", thinking: pi.getThinkingLevel() },
@@ -210,7 +211,7 @@ export default function crustExtension(pi: ExtensionAPI): void {
     });
     if (result.cancelled) throw new CrustError("SESSION_REPLACEMENT_CANCELLED", "Fresh ticket session was cancelled");
   }
-  async function chooseProposal(ctx: ExtensionContext, activeKernel: CrustKernel, id: string, proposalId: string): Promise<string | undefined> {
+  async function chooseProposal(ctx: ExtensionContext, activeKernel: PocockKernel, id: string, proposalId: string): Promise<string | undefined> {
     const presentation = await activeKernel.proposalPresentation(id, proposalId);
     while (true) {
       const decision = await ctx.ui.select(`Proposal: ${presentation.summary}`, ["Inspect full proposal", "Accept", "Reject"]);

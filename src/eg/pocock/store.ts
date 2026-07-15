@@ -1,16 +1,15 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { digest } from "./hash.js";
-import { assertReceiptChain } from "./receipts.js";
-import { CrustError, type Proposal, type Receipt, type Run, type SessionBinding, type Ticket } from "./types.js";
+import { CrustError, digest, type CrustSdk } from "../../sdk/index.js";
+import type { Proposal, Receipt, Run, SessionBinding, Ticket } from "./types.js";
 
 type JsonRow = { body: string };
 
 export class SqliteRunStore {
   private readonly db: DatabaseSync;
 
-  constructor(path: string) {
+  constructor(path: string, private readonly crust: CrustSdk) {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.exec(`
@@ -110,7 +109,7 @@ export class SqliteRunStore {
     const proposalStatuses = new Set(["pending", "accepted", "rejected", "invalidated"]);
     if (run.proposals.some((value) => typeof value.id !== "string" || !proposalKinds.has(value.kind) || !states.has(value.state) || !proposalStatuses.has(value.status) || !value.payload || typeof value.payload !== "object" || !hashes(value.evidenceDigest) || !hashes(value.compositionHash) || !timestamp(value.createdAt))) throw new CrustError("PROPOSAL_TAMPERED", `Run ${id} proposal failed schema validation`);
     if (run.sessions.some((value) => typeof value.sessionId !== "string" || !states.has(value.state) || typeof value.active !== "boolean" || !timestamp(value.createdAt))) throw new CrustError("SESSION_TAMPERED", `Run ${id} session failed schema validation`);
-    try { assertReceiptChain(run.receipts, new Set(["proposal", "decision", "transition", "evidence", "session"])); }
+    try { this.crust.journal(run.receipts).verify(new Set(["proposal", "decision", "transition", "evidence", "session"])); }
     catch { throw new CrustError("RECEIPT_TAMPERED", `Run ${id} receipt chain failed validation`); }
   }
 }

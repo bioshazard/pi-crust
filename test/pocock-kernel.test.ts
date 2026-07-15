@@ -2,10 +2,10 @@ import { chmod, mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { createCrustKernel } from "../src/kernel/kernel.js";
-import { directoryHash } from "../src/kernel/objects.js";
 import { PocockClient } from "../src/eg/pocock/client.js";
-import { CrustError, type ArtifactRef, type Run } from "../src/kernel/types.js";
+import { createPocockKernel } from "../src/eg/pocock/kernel.js";
+import type { Run } from "../src/eg/pocock/types.js";
+import { CrustError, directoryHash, type ArtifactRef } from "../src/sdk/index.js";
 
 const skillNames = ["grill-with-docs", "grilling", "domain-modeling", "to-spec", "codebase-design", "to-tickets", "implement", "tdd", "code-review"];
 
@@ -17,7 +17,7 @@ async function harness() {
     await writeFile(join(skills, name, "SKILL.md"), `# ${name}\nlocked`);
   }
   const lock = Object.fromEntries(await Promise.all(skillNames.map(async (name) => [name, await directoryHash(join(skills, name))])));
-  const kernel = createCrustKernel({
+  const kernel = createPocockKernel({
     root: join(root, ".crust"),
     client: new PocockClient(),
     skills: { dir: skills, source: "mattpocock/skills", revision: "d574778f94cf620fcc8ce741584093bc650a61d3", lock },
@@ -124,7 +124,7 @@ describe("public kernel/client seam", () => {
     expect(kernel.verifyResume(run.id).composition.objectHash).toBe(run.composition.objectHash);
     expect(await kernel.lockedPrompt(run.id, "replacement")).toBe(lockedBefore);
     expect(() => kernel.verifyResume(run.id, { model: "drift" })).toThrowError(/composition/i);
-    const upgraded = createCrustKernel({
+    const upgraded = createPocockKernel({
       root: join(root, ".crust"), client: new PocockClient(),
       skills: { dir: join(root, "skills"), source: "mattpocock/skills", revision: "future-dependency-revision", lock },
       runtime: { provider: "openai-codex", model: "gpt-5.4", thinking: "high" },
