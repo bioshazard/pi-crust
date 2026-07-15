@@ -45,7 +45,23 @@ export function createPiNaturalStopAgent(options: {
   const modelRegistry = ModelRegistry.create(authStorage, join(agentDir, "models.json"));
   if (options.baseUrl) {
     if (!options.provider) throw new Error("Pi provider is required with an explicit base URL");
-    modelRegistry.registerProvider(options.provider, { baseUrl: options.baseUrl, ...(options.apiKey ? { apiKey: options.apiKey } : {}) });
+    const customModel = options.model && !modelRegistry.find(options.provider, options.model)
+      ? [{
+          id: options.model,
+          name: options.model,
+          api: "openai-completions" as const,
+          reasoning: false,
+          input: ["text", "image"] as ("text" | "image")[],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: 128_000,
+          maxTokens: 16_384,
+        }]
+      : undefined;
+    modelRegistry.registerProvider(options.provider, {
+      baseUrl: options.baseUrl,
+      ...(options.apiKey ? { apiKey: options.apiKey } : {}),
+      ...(customModel ? { models: customModel } : {}),
+    });
   }
   const selected = options.provider && options.model ? modelRegistry.find(options.provider, options.model) : undefined;
   if (options.provider && options.model && !selected) throw new Error(`Unknown Pi model ${options.provider}/${options.model}`);
