@@ -53,7 +53,7 @@ const adapter = createSlackAdapter({
 
 app.message(async ({ message, body }) => {
   const signal = messageSignal(message, body);
-  if (signal) await adapter.message(signal);
+  if (signal?.channelType === "im") await adapter.message(signal);
 });
 
 app.event("app_mention", async ({ event, body }) => {
