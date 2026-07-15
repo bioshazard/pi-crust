@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { createCrustKernel } from "../src/kernel/kernel.js";
 import { directoryHash } from "../src/kernel/objects.js";
-import { PocockClient } from "../src/pocock/client.js";
+import { PocockClient } from "../src/eg/pocock/client.js";
 import { CrustError, type ArtifactRef, type Run } from "../src/kernel/types.js";
 
 const skillNames = ["grill-with-docs", "grilling", "domain-modeling", "to-spec", "codebase-design", "to-tickets", "implement", "tdd", "code-review"];

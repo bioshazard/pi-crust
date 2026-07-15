@@ -1,10 +1,11 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { PocockClient } from "../pocock/client.js";
+import { PocockClient } from "../eg/pocock/client.js";
 import { canonical, digest, id, sha256 } from "./hash.js";
 import { directoryHash, ObjectStore } from "./objects.js";
 import { SqliteRunStore } from "./store.js";
 import { CrustError, type ArtifactRef, type CompositionLock, type Proposal, type Receipt, type Run } from "./types.js";
+import { appendReceipt } from "./receipts.js";
 
 export interface KernelOptions {
   root: string;
@@ -20,11 +21,7 @@ export function createCrustKernel(options: KernelOptions) {
   const store = new SqliteRunStore(join(options.root, "crust.sqlite"));
   const client = options.client;
 
-  const appendReceipt = (run: Run, type: Receipt["type"], payload: unknown): void => {
-    const previous = run.receipts.at(-1)?.hash ?? null;
-    const receipt: Omit<Receipt, "hash"> = { id: id(), sequence: run.receipts.length + 1, type, payload, previousHash: previous, createdAt: now() };
-    run.receipts.push({ ...receipt, hash: digest(receipt) });
-  };
+  const record = (run: Run, type: Receipt["type"], payload: unknown): void => appendReceipt(run.receipts, type, payload);
 
   const assertSession = (run: Run, sessionId: string): void => {
     if (!run.sessions.some((session) => session.active && session.sessionId === sessionId)) throw new CrustError("STALE_SESSION", `Session ${sessionId} is not bound to run ${run.id}`);
@@ -43,7 +40,7 @@ export function createCrustKernel(options: KernelOptions) {
   const bindSession = (run: Run, sessionId: string, resumed: boolean): void => {
     for (const session of run.sessions) session.active = false;
     run.sessions.push({ sessionId, state: run.state, ...(run.activeTicketId ? { ticketId: run.activeTicketId } : {}), active: true, createdAt: now() });
-    appendReceipt(run, "session", { sessionId, state: run.state, ...(run.activeTicketId ? { ticketId: run.activeTicketId } : {}), ...(resumed ? { resumed: true } : {}) });
+    record(run, "session", { sessionId, state: run.state, ...(run.activeTicketId ? { ticketId: run.activeTicketId } : {}), ...(resumed ? { resumed: true } : {}) });
   };
   const readComposition = async (run: Run): Promise<Record<string, string>> => {
     const snapshot = await objects.get({ hash: run.composition.objectHash, bytes: run.composition.objectBytes, mediaType: "application/vnd.crust.composition+json" });
@@ -65,8 +62,8 @@ export function createCrustKernel(options: KernelOptions) {
         if (proposal.compositionHash !== compositionDigest(run)) throw new CrustError("STALE_COMPOSITION", "Proposal composition changed");
         const transition = client.accept(run, proposal.payload);
         proposal.status = "accepted";
-        appendReceipt(run, "decision", { proposalId, decision: "accepted" });
-        if (transition.from !== transition.to) appendReceipt(run, "transition", transition);
+        record(run, "decision", { proposalId, decision: "accepted" });
+        if (transition.from !== transition.to) record(run, "transition", transition);
       });
     },
     reject(expectedRevision: number, proposalId: string, reason: string): Run {
@@ -74,12 +71,12 @@ export function createCrustKernel(options: KernelOptions) {
         const proposal = run.proposals.find((candidate) => candidate.id === proposalId);
         if (!proposal || proposal.status !== "pending") throw new CrustError("PROPOSAL_NOT_PENDING", "Proposal is not pending");
         proposal.status = "rejected";
-        appendReceipt(run, "decision", { proposalId, decision: "rejected", reason });
+        record(run, "decision", { proposalId, decision: "rejected", reason });
       });
     },
     async recordEvidence(expectedRevision: number, data: string | Uint8Array): Promise<Run> {
       const ref = await objects.put(data);
-      return store.mutate(runId, expectedRevision, (run) => { run.evidence.push(ref); appendReceipt(run, "evidence", ref); });
+      return store.mutate(runId, expectedRevision, (run) => { run.evidence.push(ref); record(run, "evidence", ref); });
     },
     startTicket(expectedRevision: number, ticketId?: string): Run {
       return store.mutate(runId, expectedRevision, (run) => {
@@ -91,7 +88,7 @@ export function createCrustKernel(options: KernelOptions) {
         run.activeTicketId = selected.id;
         run.state = "IMPLEMENTING";
         for (const session of run.sessions) session.active = false;
-        appendReceipt(run, "transition", { from: "ticket-frontier", to: "IMPLEMENTING", ticketId: selected.id });
+        record(run, "transition", { from: "ticket-frontier", to: "IMPLEMENTING", ticketId: selected.id });
       });
     },
     restoreSession(expectedRevision: number, sessionId: string): Run {
@@ -111,7 +108,7 @@ export function createCrustKernel(options: KernelOptions) {
         if (run.state !== "ACCEPTED" || run.tickets.some((ticket) => ticket.status !== "accepted")) throw new CrustError("RUN_NOT_COMPLETE", "All tickets must be accepted");
         run.state = "DONE";
         delete run.activeTicketId;
-        appendReceipt(run, "transition", { from: "ACCEPTED", to: "DONE" });
+        record(run, "transition", { from: "ACCEPTED", to: "DONE" });
       });
     },
   });
@@ -133,7 +130,7 @@ export function createCrustKernel(options: KernelOptions) {
         decisions: [], glossary: [], adrs: [], tickets: [], shapingComplete: false, evidence: [], proposals: [], receipts: [],
         sessions: [{ sessionId: input.sessionId, state: "GRILLING", active: true, createdAt }], createdAt, updatedAt: createdAt,
       };
-      appendReceipt(run, "session", { sessionId: input.sessionId, state: "GRILLING" });
+      record(run, "session", { sessionId: input.sessionId, state: "GRILLING" });
       store.create(run);
       return run;
     },
@@ -151,7 +148,7 @@ export function createCrustKernel(options: KernelOptions) {
             assertSession(run, sessionId);
             if (run.state !== "REVIEWING" || run.proposals.some((proposal) => proposal.status === "pending")) throw new CrustError("REVIEW_NOT_ACTIVE", "Review frontier changed");
             run.reviewReports = { standards: standardsRef, specification: specificationRef };
-            appendReceipt(run, "evidence", { reviewReports: run.reviewReports });
+            record(run, "evidence", { reviewReports: run.reviewReports });
           });
         },
         async propose(expectedRevision: number, payload: unknown): Promise<Run> {
@@ -166,7 +163,7 @@ export function createCrustKernel(options: KernelOptions) {
               evidenceDigest: evidenceDigest(run), compositionHash: compositionDigest(run), status: "pending", createdAt: now(),
             };
             run.proposals.push(proposal);
-            appendReceipt(run, "proposal", { proposalId: proposal.id, kind: proposal.kind });
+            record(run, "proposal", { proposalId: proposal.id, kind: proposal.kind });
           });
         },
       };

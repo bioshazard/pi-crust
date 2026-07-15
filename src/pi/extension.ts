@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createCrustKernel, type CrustKernel } from "../kernel/kernel.js";
 import { CrustError, type Run } from "../kernel/types.js";
-import { PocockClient, PROPOSAL_SCHEMAS, REVIEW_AXES_SCHEMA, STAGE_ARTIFACT_SCHEMA } from "../pocock/client.js";
+import { PocockClient, PROPOSAL_SCHEMAS, REVIEW_AXES_SCHEMA, STAGE_ARTIFACT_SCHEMA } from "../eg/pocock/client.js";
 import { runReviewAxes } from "./review.js";
 
 const BINDING = "crust-run";

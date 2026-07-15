@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { expect, it } from "vitest";
 import { createCrustKernel } from "../src/kernel/kernel.js";
 import { directoryHash } from "../src/kernel/objects.js";
-import { PocockClient } from "../src/pocock/client.js";
+import { PocockClient } from "../src/eg/pocock/client.js";
 
 it("keeps normalized authoritative rows and rejects persisted tampering", async () => {
   const root = await mkdtemp(join(tmpdir(), "crust-persistence-"));
