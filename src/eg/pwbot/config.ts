@@ -1,5 +1,5 @@
 export type PwbotConfig = {
-  slack: { botToken: string; appToken: string };
+  slack: { botToken: string; appToken: string; logLevel: "debug" | "info" | "warn" | "error" };
   stateRoot: string;
   reactions: Record<string, number>;
   pi: {
@@ -14,13 +14,14 @@ export type PwbotConfig = {
 export function pwbotConfig(env: Record<string, string | undefined> = process.env): PwbotConfig {
   const botToken = required(env, "SLACK_BOT_TOKEN");
   const appToken = required(env, "SLACK_APP_TOKEN");
+  const logLevel = parseLogLevel(env.PWBOT_LOG_LEVEL);
   const model = env.PWBOT_PI_MODEL ?? env.OPENAI_API_MODEL;
   const apiKey = env.PWBOT_PI_API_KEY ?? env.OPENAI_API_KEY;
   const baseUrl = env.PWBOT_PI_BASE_URL ?? env.OPENAI_API_BASE;
   const provider = env.PWBOT_PI_PROVIDER ?? (model || apiKey || baseUrl ? "openai" : undefined);
   const thinking = parseThinking(env.PWBOT_PI_THINKING);
   return {
-    slack: { botToken, appToken },
+    slack: { botToken, appToken, logLevel },
     stateRoot: env.PWBOT_STATE_DIR ?? ".crust",
     reactions: parseReactions(env.PWBOT_REACTION_VALUES),
     pi: {
@@ -31,6 +32,12 @@ export function pwbotConfig(env: Record<string, string | undefined> = process.en
       ...(thinking ? { thinking } : {}),
     },
   };
+}
+
+function parseLogLevel(value: string | undefined): PwbotConfig["slack"]["logLevel"] {
+  if (!value) return "info";
+  if (value === "debug" || value === "info" || value === "warn" || value === "error") return value;
+  throw new Error("PWBOT_LOG_LEVEL must be debug, info, warn, or error");
 }
 
 function required(env: Record<string, string | undefined>, name: string): string {

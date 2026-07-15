@@ -38,6 +38,7 @@ are omitted. Optional overrides:
 
 ```dotenv
 PWBOT_STATE_DIR=.crust
+PWBOT_LOG_LEVEL=debug
 PWBOT_REACTION_VALUES={"thumbsup":0.1,"tada":0.1}
 PWBOT_PI_PROVIDER=openai
 PWBOT_PI_MODEL=gpt-4o

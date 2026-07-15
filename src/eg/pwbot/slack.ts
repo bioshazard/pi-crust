@@ -6,11 +6,17 @@ import { createPwbotMachine } from "./machine.js";
 import { createSlackAdapter, type SlackMessageSignal, type SlackReactionSignal } from "./slack-adapter.js";
 
 const config = pwbotConfig();
+const logLevels = {
+  debug: LogLevel.DEBUG,
+  info: LogLevel.INFO,
+  warn: LogLevel.WARN,
+  error: LogLevel.ERROR,
+};
 const app = new App({
   socketMode: true,
   token: config.slack.botToken,
   appToken: config.slack.appToken,
-  logLevel: LogLevel.INFO,
+  logLevel: logLevels[config.slack.logLevel],
 });
 const auth = await app.client.auth.test();
 if (typeof auth.user_id !== "string") throw new Error("Slack auth did not return a bot user ID");
