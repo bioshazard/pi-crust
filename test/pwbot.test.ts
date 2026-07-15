@@ -18,7 +18,7 @@ const input = (eventId: string, text: string, userId = "U1"): PwbotInput => ({
 });
 
 describe("headless pwbot machine", () => {
-  it("projects one Slack thread, applies karma once, and emits a transport-neutral delivery package", async () => {
+  it("projects one ordinary Slack thread and emits a transport-neutral delivery package", async () => {
     const root = await mkdtemp(join(tmpdir(), "crust-pwbot-"));
     const requests: NaturalStopRequest[] = [];
     const agent: NaturalStopAgent = {
@@ -29,26 +29,41 @@ describe("headless pwbot machine", () => {
     };
     const bot = createPwbotMachine({ root, agent });
 
-    const first = await bot.handle(input("E1", "<@U2>++ thanks for fixing it"));
+    const first = await bot.handle(input("E1", "Can you summarize the release status?"));
     expect(first.state).toBe("COMPLETED");
     expect(first.delivery).toMatchObject({
       correlation: { inputId: "E1", conversationId: "C1", threadId: "T1" },
       content: { text: "Nice work, <@U2>!", mediaType: "text/slack-markdown" },
     });
-    expect(first.karma).toEqual([{ target: "U2", delta: 1, allowed: true, score: 1, comment: "thanks for fixing it" }]);
+    expect(first.karma).toEqual([]);
     expect(await bot.readArtifact(first.replyArtifact!)).toBe("Nice work, <@U2>!");
     expect(requests).toHaveLength(1);
-    expect(requests[0]!.prompt).toContain("<@U2>++ thanks for fixing it");
-    expect(requests[0]!.prompt).toContain("U2: 1");
+    expect(requests[0]!.prompt).toContain("Can you summarize the release status?");
     expect(requests[0]!.tools).toEqual([]);
 
-    const duplicate = await bot.handle(input("E1", "<@U2>++ thanks for fixing it"));
+    const duplicate = await bot.handle(input("E1", "Can you summarize the release status?"));
     expect(duplicate).toEqual(first);
     expect(requests).toHaveLength(1);
-    expect(bot.karma("U2")).toBe(1);
+    expect(bot.karma("U2")).toBe(0);
     expect(first.receipts.map((receipt) => receipt.type)).toEqual([
-      "input", "transition", "karma", "agent_stop", "byproduct", "transition",
+      "input", "transition", "agent_stop", "byproduct", "transition",
     ]);
+    bot.close();
+  });
+
+  it("handles a karma-only message without invoking an agent", async () => {
+    const root = await mkdtemp(join(tmpdir(), "crust-pwbot-"));
+    let agentRuns = 0;
+    const bot = createPwbotMachine({
+      root,
+      agent: { async run() { agentRuns += 1; throw new Error("karma must not invoke Pi"); } },
+    });
+    const result = await bot.handle(input("K1", "<@U2> ++ helpful review"));
+    expect(result.state).toBe("COMPLETED");
+    expect(result.delivery).toBeUndefined();
+    expect(result.karma).toEqual([{ target: "U2", delta: 1, allowed: true, score: 1, comment: "helpful review" }]);
+    expect(agentRuns).toBe(0);
+    expect(result.receipts.map((receipt) => receipt.type)).toEqual(["input", "transition", "karma", "transition"]);
     bot.close();
   });
 
@@ -56,7 +71,7 @@ describe("headless pwbot machine", () => {
     const root = await mkdtemp(join(tmpdir(), "crust-pwbot-"));
     const bot = createPwbotMachine({
       root,
-      agent: { async run() { return { text: "No self-awards.", stopReason: "stop", identity: { provider: "test", model: "fake" } }; } },
+      agent: { async run() { throw new Error("self-karma must not invoke Pi"); } },
     });
     const result = await bot.handle(input("E2", "<@U1>++ I nailed it"));
     expect(result.karma).toEqual([{ target: "U1", delta: 1, allowed: false, reason: "self-karma is forbidden", comment: "I nailed it" }]);
@@ -102,12 +117,12 @@ describe("headless pwbot machine", () => {
       },
     });
 
-    const failed = await bot.handle(input("E3", "<@U2>++"));
+    const failed = await bot.handle(input("E3", "Please summarize this and note <@U2>++"));
     expect(failed.state).toBe("FAILED");
     expect(failed.delivery).toBeUndefined();
     expect(bot.karma("U2")).toBe(1);
 
-    const recovered = await bot.handle(input("E3", "<@U2>++"));
+    const recovered = await bot.handle(input("E3", "Please summarize this and note <@U2>++"));
     expect(recovered.state).toBe("COMPLETED");
     expect(recovered.delivery?.content.text).toBe("Recovered.");
     expect(bot.karma("U2")).toBe(1);

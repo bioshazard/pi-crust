@@ -25,7 +25,7 @@ export function createPwbotMachine(options: {
       validateInput(input);
       let run = store.begin(input, karmaFor(input, reactionValues), compositionHash);
       if (run.state === "COMPLETED") return result(run);
-      if (input.kind === "reaction") return result(store.completeDeterministic(run));
+      if (input.kind === "reaction" || isKarmaOnly(input)) return result(store.completeDeterministic(run));
 
       const request = project(input, run.karma, store);
       run = store.recordProjection(run, digest(request));
@@ -110,6 +110,10 @@ function validateInput(input: PwbotInput): void {
     if (!input.trigger.id || !input.trigger.principal || !input.trigger.text || input.messages.length === 0) throw new Error("Pwbot message input is incomplete");
     if (!input.messages.some((message) => message.id === input.trigger.id)) throw new Error("Trigger must be present in projected thread messages");
   }
+}
+
+function isKarmaOnly(input: PwbotInput): boolean {
+  return input.kind === "message" && /^\s*<@[A-Za-z0-9]+>\s*(?:\+\+|--)(?:\s+[^\n]+)?\s*$/.test(input.trigger.text);
 }
 
 function result(run: PwbotRun): PwbotResult {

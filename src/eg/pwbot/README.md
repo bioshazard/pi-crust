@@ -14,7 +14,8 @@ delivery package. Configured reaction events update karma and terminate without 
 LLM call. Event IDs make both paths idempotent.
 
 `<@user> ++ comment` and `<@user> -- comment` are parsed from the triggering
-message only. Reaction value is selected from the machine's locked
+message only and terminate without an LLM when they comprise the whole message.
+Reaction value is selected from the machine's locked
 `reactionValues` policy; the event cannot choose its own score. Replaying an event
 under changed policy/composition is rejected.
 

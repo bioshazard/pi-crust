@@ -67,3 +67,4 @@ The outer Slack adapter authenticates events, retrieves thread contents, resolve
 reaction's message author, and delivers completed packages. `eventId` provides
 idempotency. Karma directives such as `<@U123> ++ helpful review` and configured
 emoji reactions update SQLite deterministically; only message replies invoke the LLM.
+Karma-only messages terminate without invoking Pi.
