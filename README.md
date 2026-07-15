@@ -80,3 +80,6 @@ reaction's message author, and delivers completed packages. `eventId` provides
 idempotency. Karma directives such as `<@U123> ++ helpful review` and configured
 emoji reactions update SQLite deterministically; only message replies invoke the LLM.
 Karma-only messages terminate without invoking Pi.
+
+Run the complete Socket Mode bot with `npm run pwbot`, or `cd src/eg/pwbot &&
+npm start`. See the example README and Slack manifest for configuration.

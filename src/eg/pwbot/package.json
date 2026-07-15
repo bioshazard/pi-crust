@@ -1,0 +1,8 @@
+{
+  "name": "@pi-crust/pwbot-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node ../../../scripts/pwbot.mjs"
+  }
+}

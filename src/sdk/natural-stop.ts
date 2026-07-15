@@ -31,12 +31,22 @@ export function createPiNaturalStopAgent(options: {
   agentDir?: string;
   provider?: string;
   model?: string;
+  apiKey?: string;
+  baseUrl?: string;
   thinking?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 } = {}): NaturalStopAgent {
   const cwd = options.cwd ?? process.cwd();
   const agentDir = options.agentDir ?? getAgentDir();
   const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
+  if (options.apiKey) {
+    if (!options.provider) throw new Error("Pi provider is required with an explicit API key");
+    authStorage.setRuntimeApiKey(options.provider, options.apiKey);
+  }
   const modelRegistry = ModelRegistry.create(authStorage, join(agentDir, "models.json"));
+  if (options.baseUrl) {
+    if (!options.provider) throw new Error("Pi provider is required with an explicit base URL");
+    modelRegistry.registerProvider(options.provider, { baseUrl: options.baseUrl, ...(options.apiKey ? { apiKey: options.apiKey } : {}) });
+  }
   const selected = options.provider && options.model ? modelRegistry.find(options.provider, options.model) : undefined;
   if (options.provider && options.model && !selected) throw new Error(`Unknown Pi model ${options.provider}/${options.model}`);
 

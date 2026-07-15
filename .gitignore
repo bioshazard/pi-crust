@@ -4,3 +4,4 @@ node_modules/
 .pi/skills/
 coverage/
 *.log
+.env*
