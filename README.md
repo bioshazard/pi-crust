@@ -1,5 +1,9 @@
 # pi-crust
 
+> **Migrated.** This research apparatus now lives in
+> [`harness-engineering/incubator/crust` at `09978a41de28df65a088d2cfe45270540c6c45c8`](https://github.com/bioshazard/harness-engineering/tree/09978a41de28df65a088d2cfe45270540c6c45c8/incubator/crust).
+> This repository remains as historical source for that migration.
+
 Pi-native, durable Pocock v1.1 workflow POC. Stock Pi loads the project-local
 extension at `.pi/extensions/crust.ts`; SQLite and `.crust/objects` hold workflow
 authority and immutable evidence.
